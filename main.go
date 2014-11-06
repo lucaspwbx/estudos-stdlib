@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strings"
 )
@@ -210,4 +211,67 @@ func main() {
 	fmt.Println("Word: ", string(readSlice[:n]))
 
 	//TODO - netx, readbyte, readrune, unreadrune, unreadbyte, readbytes, readstring
+	fmt.Println()
+	testTcp()
+}
+
+func testTcp() {
+	go server()
+}
+
+func server() {
+	//tcp server
+	host := "localhost"
+	port := "3333"
+
+	addr := fmt.Sprintf("%s:%s", host, port)
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer l.Close()
+	fmt.Println("listening")
+
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting: ", err)
+			return
+		}
+		//	done <- 1
+		client()
+		go handleRequest(conn)
+	}
+}
+
+func client() {
+	fmt.Println("client")
+	conn2, err := net.Dial("tcp", "localhost"+":"+"3333")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	n, err := conn2.Write([]byte("teste"))
+	fmt.Printf("Wrote %d bytes on CLIENT: ", n)
+	buf := make([]byte, 128)
+	n, err = conn2.Read(buf)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(n)
+}
+
+func handleRequest(conn net.Conn) {
+	buf := make([]byte, 128)
+	n, err := conn.Read(buf)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("Read %d bytes", n)
+	_, err = conn.Write([]byte("messagr received"))
+	if err != nil {
+		fmt.Println("Sent message")
+	}
 }
