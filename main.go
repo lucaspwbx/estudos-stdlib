@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 )
 
 func main() {
@@ -212,11 +213,75 @@ func main() {
 
 	//TODO - netx, readbyte, readrune, unreadrune, unreadbyte, readbytes, readstring
 	fmt.Println()
-	testTcp()
+	//testTcp()
+	//testUnixSocket()
+}
+
+func testUnixSocket() {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		unixServer()
+	}()
+	go func() {
+		defer wg.Done()
+		unixClient()
+	}()
+	wg.Wait()
+}
+
+func unixClient() {
+	os.Remove("/tmp/unixdomaincli")
+	laddr := net.UnixAddr{"/tmp/unixdomaincli", "unix"}
+	conn, err := net.DialUnix("unix", &laddr, &net.UnixAddr{"/tmp/unixdomain1", "unix"})
+	if err != nil {
+		panic(err)
+	}
+	defer os.Remove("/tmp/unixdomaincli")
+	_, err = conn.Write([]byte("hello"))
+	if err != nil {
+		panic(err)
+	}
+	conn.Close()
+}
+
+func unixServer() {
+	os.Remove("/tmp/unixdomain1")
+	l, err := net.ListenUnix("unix", &net.UnixAddr{"/tmp/unixdomain1", "unix"})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("listening socket")
+	defer os.Remove("/tmp/unixdomain1")
+
+	for {
+		conn, err := l.AcceptUnix()
+		if err != nil {
+			panic(err)
+		}
+		var buf = make([]byte, 1024)
+		n, err := conn.Read(buf)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("%s\n", string(buf[:n]))
+		conn.Close()
+	}
 }
 
 func testTcp() {
-	go server()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		server()
+	}()
+	go func() {
+		defer wg.Done()
+		client()
+	}()
+	wg.Wait()
 }
 
 func server() {
@@ -239,39 +304,34 @@ func server() {
 			fmt.Println("Error accepting: ", err)
 			return
 		}
-		//	done <- 1
-		client()
 		go handleRequest(conn)
 	}
 }
 
 func client() {
-	fmt.Println("client")
 	conn2, err := net.Dial("tcp", "localhost"+":"+"3333")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 	n, err := conn2.Write([]byte("teste"))
-	fmt.Printf("Wrote %d bytes on CLIENT: ", n)
 	buf := make([]byte, 128)
 	n, err = conn2.Read(buf)
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println(n)
+	fmt.Println(string(buf[:n]))
 }
 
 func handleRequest(conn net.Conn) {
 	buf := make([]byte, 128)
-	n, err := conn.Read(buf)
+	_, err := conn.Read(buf)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	fmt.Printf("Read %d bytes", n)
 	_, err = conn.Write([]byte("messagr received"))
 	if err != nil {
-		fmt.Println("Sent message")
+		fmt.Println(err)
 	}
 }
