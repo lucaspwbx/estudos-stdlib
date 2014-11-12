@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"unicode"
 )
 
 func main() {
@@ -215,6 +216,154 @@ func main() {
 	fmt.Println()
 	//testTcp()
 	//testUnixSocket()
+
+	//looking ip for given hostname - returns slice of strings
+	addrs, err := net.LookupHost("www.google.com")
+	if err != nil {
+		fmt.Println(err)
+	}
+	for _, v := range addrs {
+		fmt.Println(v)
+	}
+
+	fmt.Println()
+
+	//looking IP for given hostname - returns slice of IPs
+	addrs2, err := net.LookupIP("www.google.com")
+	if err != nil {
+		fmt.Println(err)
+	}
+	for _, v := range addrs2 {
+		fmt.Println(v)
+	}
+
+	//looking up port of service
+	port, err := net.LookupPort("tcp", "ftp")
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println("Port: ", port)
+
+	//package Strings
+
+	//Fields - splits on whitespace
+	fmt.Printf("Fiels are %q", strings.Fields(" foo bar baz "))
+
+	fmt.Println()
+
+	//FieldsFunc - splits based on a func - not a letter neither a number
+	f := func(c rune) bool {
+		return !unicode.IsLetter(c) && !unicode.IsNumber(c)
+	}
+
+	fmt.Printf("Fields are: %q", strings.FieldsFunc("  foo1;bar2,baz3...", f)) //["foo1", "bar2", "baz3"]
+
+	fmt.Println()
+
+	//Contains
+	fmt.Println(strings.Contains("seafood", "foo")) //true
+	fmt.Println(strings.Contains("seafood", "bar")) //false
+
+	//ContainsAny
+	fmt.Println(strings.ContainsAny("team", "i")) //false
+
+	//Count
+	fmt.Println(strings.Count("cheese", "e")) //3
+
+	//Replace
+	fmt.Println(strings.Replace("oink oink oink", "k", "ky", 2))      //oinky oinky oink
+	fmt.Println(strings.Replace("oink oink oink", "oink", "moo", -1)) //moo moo moo
+
+	//Reader
+	reader := strings.NewReader("lucas")
+
+	//Len
+	fmt.Println(reader.Len()) //5
+
+	//Read
+	var buf []byte
+	buf = make([]byte, reader.Len())
+	number, err := reader.Read(buf)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(string(buf[:number])) //lucas
+
+	//ReadAt - read after third index, including it
+	reader2 := strings.NewReader("lucas")
+	var buf2 []byte
+	buf2 = make([]byte, reader2.Len())
+	number2, err := reader2.ReadAt(buf2, 3)
+	if err != nil && err != io.EOF {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(string(buf2[:number2])) //as
+
+	reader3 := strings.NewReader("lucas")
+	var buf3 []byte
+	buf3 = make([]byte, reader3.Len())
+	_, err = reader3.ReadAt(buf3, -1)
+	if err != nil && err != io.EOF {
+		fmt.Println(err) // negative offset
+	}
+
+	_, err = reader3.ReadAt(buf3, 10)
+	if err != nil {
+		fmt.Println(err) // EOF - offset >= length of string
+	}
+
+	b, err := reader3.ReadByte()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(string(b)) // l
+
+	err = reader3.UnreadByte() //go back to "l"
+	if err != nil {
+		fmt.Println("Error unreading byte")
+	}
+
+	r, _, err = reader3.ReadRune()
+	if err != nil {
+		fmt.Println("Error reading rune")
+	}
+	fmt.Println(string(r)) //l
+
+	err = reader3.UnreadRune() //go back to "l"
+	if err != nil {
+		fmt.Println("Error unreading rune")
+		return
+	}
+	fmt.Println("ok, unread rune")
+
+	//Seek
+	_, err = reader3.Seek(1, 0) //0 means relative to beginning of string
+	if err != nil {
+		fmt.Println(err)
+	}
+	omik, _ := reader3.ReadByte()
+	fmt.Println(string(omik))
+
+	_, err = reader3.Seek(2, 1) //1 means relative to current offset
+	if err != nil {
+		fmt.Println(err)
+	}
+	omik2, _ := reader3.ReadByte()
+	fmt.Println(string(omik2))
+
+	reader4 := strings.NewReader("omik")
+	_, err = reader4.Seek(-2, 2) //2 means relative to end of string
+	if err != nil {
+		fmt.Println(err)
+	}
+	omik3, err := reader4.ReadByte()
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(string(omik3))
 }
 
 func testUnixSocket() {
