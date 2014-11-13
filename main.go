@@ -3,9 +3,13 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"strings"
@@ -451,6 +455,66 @@ func main() {
 	//Atoi - shorthand for ParseInt(s, 10, 0)
 	integer2, _ := strconv.Atoi("192")
 	fmt.Println(integer2) // 192
+
+	//package http
+	//client
+
+	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Last-Modified", "sometime")
+		fmt.Fprintf(w, "User-agent: go\nDisallow: /something/")
+	})
+
+	//testing client
+	ts := httptest.NewServer(handler)
+
+	req, err := http.Get(ts.URL)
+	var readNr []byte
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	readNr, err = ioutil.ReadAll(req.Body)
+	req.Body.Close()
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(string(readNr)) //User-agent: go\nDisallow: /something/
+	ts.Close()
+
+	//testing head
+	ts = httptest.NewServer(handler)
+	req, err = http.Head(ts.URL)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(req.Header["Last-Modified"]) //["sometime"]
+
+	transport := &recordingTransport{}
+	client := &http.Client{Transport: transport}
+	url := "http://dummy.faketld/"
+	client.Get(url)                         //does not hit network
+	fmt.Println(transport.req.Method)       //GET
+	fmt.Println(transport.req.URL.String()) //dummy.fakeltd
+	fmt.Println(transport.req.Header)       //map[]
+
+	json := `"key":"value"}`
+	body := strings.NewReader(json)
+	client.Post(url, "application/json", body)
+	fmt.Println(transport.req.Method)        //POST
+	fmt.Println(transport.req.URL.String())  //dummy.fakeltd
+	fmt.Println(transport.req.Header)        //map[]
+	fmt.Println(transport.req.Close)         //true
+	fmt.Println(transport.req.ContentLength) //14
+}
+
+type recordingTransport struct {
+	req *http.Request
+}
+
+func (t *recordingTransport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
+	t.req = req
+	return nil, errors.New("dummy impl")
 }
 
 type TestRWMutex struct {
