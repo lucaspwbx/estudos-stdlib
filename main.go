@@ -7,8 +7,10 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 )
 
@@ -364,6 +366,103 @@ func main() {
 		fmt.Println(err)
 	}
 	fmt.Println(string(omik3))
+
+	//package sync
+
+	//waitgroup
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i <= 5; i++ {
+			fmt.Println("Goroutine 1: ", i)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i <= 5; i++ {
+			fmt.Println("Goroutine 2: ", i)
+		}
+	}()
+	wg.Wait()
+	fmt.Println("goroutines processed")
+
+	test := &TestRWMutex{critical: "blalal"}
+	var wg2 sync.WaitGroup
+	wg2.Add(10)
+	for i := 0; i < 10; i++ {
+		fmt.Println(i)
+		go func(i int) {
+			defer wg2.Done()
+			bla := fmt.Sprintf("goroutine %d modificando secao critica\n", i)
+			test.Write(bla)
+		}(i)
+	}
+	wg2.Wait()
+	fmt.Println(test.critical)
+
+	fmt.Println()
+
+	var mutex sync.Mutex
+	var criticalSection string
+	go func() {
+		mutex.Lock()
+		time.Sleep(5000)
+		criticalSection = "lucas"
+		mutex.Unlock()
+	}()
+	go func() {
+		mutex.Lock()
+		criticalSection = "weiblen"
+		mutex.Unlock()
+	}()
+	time.Sleep(7000)
+	fmt.Println(criticalSection)
+
+	//package strconv
+
+	//parse string to bool
+	value2, err := strconv.ParseBool("TRUE")
+	if err != nil {
+		fmt.Println("Error converting")
+	}
+	fmt.Println(value2) // true - bool
+
+	//receives a bool and returns a string
+	backToString := strconv.FormatBool(value2)
+	fmt.Println(backToString) //true - string
+
+	fmt.Println("-----")
+
+	//append bool converted to string to slice
+	var sliceBool []byte
+	sliceBool = strconv.AppendBool(sliceBool, false)
+	fmt.Println(string(sliceBool)) //false
+
+	float, err := strconv.ParseFloat("1.39", 64)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(float) // 1.39
+
+	integer, _ := strconv.ParseInt("190", 10, 64) //base 10, int64
+	fmt.Println(integer)                          // 190
+
+	//Atoi - shorthand for ParseInt(s, 10, 0)
+	integer2, _ := strconv.Atoi("192")
+	fmt.Println(integer2) // 192
+}
+
+type TestRWMutex struct {
+	critical string
+	rw       sync.RWMutex
+}
+
+func (t *TestRWMutex) Write(word string) error {
+	defer t.rw.Unlock()
+	t.rw.Lock()
+	t.critical = word
+	return nil
 }
 
 func testUnixSocket() {
