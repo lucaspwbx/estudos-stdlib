@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -492,20 +493,198 @@ func main() {
 
 	transport := &recordingTransport{}
 	client := &http.Client{Transport: transport}
-	url := "http://dummy.faketld/"
-	client.Get(url)                         //does not hit network
+	url2 := "http://dummy.faketld/"
+	client.Get(url2)                        //does not hit network
 	fmt.Println(transport.req.Method)       //GET
 	fmt.Println(transport.req.URL.String()) //dummy.fakeltd
 	fmt.Println(transport.req.Header)       //map[]
 
-	json := `"key":"value"}`
+	json := `{"key":"value"}`
 	body := strings.NewReader(json)
-	client.Post(url, "application/json", body)
+	client.Post(url2, "application/json", body)
 	fmt.Println(transport.req.Method)        //POST
 	fmt.Println(transport.req.URL.String())  //dummy.fakeltd
 	fmt.Println(transport.req.Header)        //map[]
 	fmt.Println(transport.req.Close)         //true
 	fmt.Println(transport.req.ContentLength) //14
+
+	fmt.Println()
+
+	form := url.Values{}
+	form.Set("foo", "bar")
+	form.Add("foo", "bar2")
+	form.Set("bar", "baz")
+	client.PostForm(url2, form)
+	fmt.Println(transport.req.Method) //POST
+	fmt.Println(transport.req.URL.String())
+	fmt.Println(transport.req.Header.Get("Content-Type")) //application/x-www-form-urlencoded
+	fmt.Println(transport.req.Close)                      // false
+	fmt.Println(transport.req.ContentLength)              //24
+	bodyR, _ := ioutil.ReadAll(transport.req.Body)
+	fmt.Println(string(bodyR)) //bar=baz&foo=bar&foo=bar2
+
+	//testing redirects
+	var ts2 *httptest.Server
+	ts2 = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n, _ := strconv.Atoi(r.FormValue("n"))
+		if n == 7 {
+			fmt.Println(r.Referer())
+		}
+		if n < 15 {
+			http.Redirect(w, r, fmt.Sprintf("/?n=%d", n+1), http.StatusFound)
+			return
+		}
+		fmt.Fprintf(w, "n=%d", n)
+	}))
+	defer ts2.Close()
+
+	c2 := &http.Client{}
+	_, err = c2.Get(ts2.URL)
+	fmt.Println(err)
+
+	_, err = c2.Head(ts2.URL)
+	fmt.Println(err)
+
+	greq, _ := http.NewRequest("GET", ts2.URL, nil)
+	_, err = c2.Do(greq)
+	fmt.Println(err)
+
+	var checkErr error
+	var lastVia []*http.Request
+	c2 = &http.Client{CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+		lastVia = via
+		return checkErr
+	}}
+	response, _ := c2.Get(ts2.URL)
+	response.Body.Close()
+	fmt.Println(response.Request.URL.String())
+	fmt.Println(len(lastVia))
+
+	//strange behavior
+	response, err = c2.Get(ts2.URL)
+	fmt.Println(err)
+	fmt.Println(response)
+	fmt.Println(response.Header.Get("Location"))
+
+	//redirects via POST
+	PostRedirects()
+
+	ClientSendsCookieFromJar()
+
+	RedirectCookiesJar()
+}
+
+var expectedCookies = []*http.Cookie{
+	{Name: "ChocolateChip", Value: "tasty"},
+	{Name: "First", Value: "Hit"},
+	{Name: "Second", Value: "Hit"},
+}
+
+var echoCookiesRedirectHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	for _, cookie := range r.Cookies() {
+		http.SetCookie(w, cookie)
+	}
+	if r.URL.Path == "/" {
+		http.SetCookie(w, expectedCookies[1])
+		http.Redirect(w, r, "/second", http.StatusMovedPermanently)
+	} else {
+		http.SetCookie(w, expectedCookies[2])
+		w.Write([]byte("hello"))
+	}
+})
+
+type TestJar struct {
+	m      sync.Mutex
+	perURL map[string][]*http.Cookie
+}
+
+func (j *TestJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
+	j.m.Lock()
+	defer j.m.Unlock()
+	if j.perURL == nil {
+		j.perURL = make(map[string][]*http.Cookie)
+	}
+	j.perURL[u.Host] = cookies
+}
+
+func (j *TestJar) Cookies(u *url.URL) []*http.Cookie {
+	j.m.Lock()
+	defer j.m.Unlock()
+	return j.perURL[u.Host]
+}
+
+func ClientSendsCookieFromJar() {
+	tr := &recordingTransport{}
+	client := &http.Client{Transport: tr}
+	client.Jar = &TestJar{perURL: make(map[string][]*http.Cookie)}
+	us := "http://dummy.fakelt/"
+	u, _ := url.Parse(us)
+	client.Jar.SetCookies(u, expectedCookies)
+	client.Get(us)
+	fmt.Println(tr.req.Cookies())
+
+	client.Head(us)
+	fmt.Println(tr.req.Cookies())
+
+	client.Post(us, "text/plain", strings.NewReader("body"))
+	fmt.Println(tr.req.Cookies())
+
+	client.PostForm(us, url.Values{})
+	fmt.Println(tr.req.Cookies())
+
+	req, _ := http.NewRequest("GET", us, nil)
+	client.Do(req)
+	fmt.Println(tr.req.Cookies())
+
+	req, _ = http.NewRequest("POST", us, nil)
+	client.Do(req)
+	fmt.Println(tr.req.Cookies())
+}
+
+func RedirectCookiesJar() {
+	var ts *httptest.Server
+	ts = httptest.NewServer(echoCookiesRedirectHandler)
+	defer ts.Close()
+	c := &http.Client{
+		Jar: new(TestJar),
+	}
+	u, _ := url.Parse(ts.URL)
+	c.Jar.SetCookies(u, []*http.Cookie{expectedCookies[0]})
+	resp, _ := c.Get(ts.URL)
+	resp.Body.Close()
+	fmt.Println(resp.Cookies())
+}
+
+func PostRedirects() {
+	var log struct {
+		sync.Mutex
+		bytes.Buffer
+	}
+
+	var ts *httptest.Server
+	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Lock()
+		fmt.Fprintf(&log.Buffer, "%s %s ", r.Method, r.RequestURI)
+		log.Unlock()
+		if v := r.URL.Query().Get("code"); v != "" {
+			code, _ := strconv.Atoi(v)
+			if code/100 == 3 {
+				w.Header().Set("Location", ts.URL)
+			}
+			w.WriteHeader(code)
+		}
+	}))
+	defer ts.Close()
+	res, _ := http.Post(ts.URL+"/", "text/plain", strings.NewReader("Some content"))
+	fmt.Println(res.StatusCode)
+
+	res, _ = http.Post(ts.URL+"/?code=301", "text/plain", strings.NewReader("Some content"))
+	fmt.Println(res.StatusCode)
+
+	log.Lock()
+	got := log.String()
+	log.Unlock()
+	fmt.Println(got)
 }
 
 type recordingTransport struct {
