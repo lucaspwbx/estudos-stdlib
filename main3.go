@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/csv"
+	"encoding/gob"
+	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math"
 	"os"
 	"strings"
@@ -75,6 +79,77 @@ func base64Example() {
 	fmt.Println(string(res2))
 }
 
+func csvExample() {
+	//writing
+	b := &bytes.Buffer{}
+	f := csv.NewWriter(b)
+	err := f.WriteAll([][]string{{"abc"}})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	out := b.String()
+	fmt.Println(out)
+
+	//writing
+	b2 := &bytes.Buffer{}
+	f2 := csv.NewWriter(b2)
+	f2.Write([]string{"bcd"})
+	f2.Flush()
+	fmt.Println(f2.Error())
+
+	//writing using errorWriter
+	f2 = csv.NewWriter(errorWriter{})
+	f2.Write([]string{"bcd"})
+	f2.Flush()
+	fmt.Println(f2.Error())
+}
+
+type P struct {
+	X, Y, Z int
+	Name    string
+}
+
+type Q struct {
+	X, Y *int32
+	Name string
+}
+
+func exampleGob() {
+	var network bytes.Buffer
+	enc := gob.NewEncoder(&network)
+	dec := gob.NewDecoder(&network)
+
+	err := enc.Encode(P{3, 4, 5, "Pythagoras"})
+	if err != nil {
+		log.Fatal("encode error:", err)
+	}
+	err = enc.Encode(P{1782, 1841, 1922, "Threehouse"})
+	if err != nil {
+		log.Fatal("encode error:", err)
+	}
+
+	var q Q
+	err = dec.Decode(&q)
+	if err != nil {
+		log.Fatal("decode erro 1")
+	}
+	fmt.Printf("%q: {%d, %d}\n", q.Name, *q.X, *q.Y)
+	err = dec.Decode(&q)
+	if err != nil {
+		log.Fatal("decode error 2: ", err)
+	}
+	fmt.Printf("%q: {%d, %d}\n", q.Name, *q.X, *q.Y)
+}
+
+type errorWriter struct{}
+
+func (e errorWriter) Write(b []byte) (int, error) {
+	return 0, errors.New("Test")
+}
+
 func main() {
 	base64Example()
+	csvExample()
+	exampleGob()
 }
