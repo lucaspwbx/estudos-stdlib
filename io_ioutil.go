@@ -36,4 +36,17 @@ func main() {
 	}
 	retorno3, _ := ioutil.ReadFile("temp.go")
 	fmt.Println(string(retorno3))
+
+	dir, _ := os.Getwd()
+	tempFile, err := ioutil.TempFile(dir, "")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer os.Remove(tempFile.Name())
+	tempFile.WriteString("okmodificado")
+
+	_, err = ioutil.TempDir(dir, "")
+	if err != nil {
+		log.Fatal(err)
+	}
 }
