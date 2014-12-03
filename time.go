@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -9,12 +10,13 @@ func main() {
 	ExampleDuration()
 	ExampleAfter()
 	ExampleSleep()
-	//ExampleTick()
 	ExampleMonth()
 	ExampleDate()
 	ExampleFormat()
 	ExampleParse()
 	ExampleParseInLocation()
+	//ExampleTick()
+	ExampleTickDois()
 }
 
 func ExampleDuration() {
@@ -98,4 +100,21 @@ func ExampleParseInLocation() {
 	const longForm = "Jan 2, 2006 at 3:04pm (MST)"
 	t, _ := time.ParseInLocation(longForm, "Jul 9, 2012 at 5:02am (CEST)", loc)
 	fmt.Println(t)
+}
+
+func ExampleTickDois() {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	t0 := time.Now()
+	for i := 0; i < 10; i++ {
+		<-ticker.C
+	}
+	ticker.Stop()
+	t1 := time.Now()
+	fmt.Println(t1.Sub(t0))
+	select {
+	case <-ticker.C:
+		log.Fatal("ticker did not shut down")
+	default:
+		fmt.Println("ticker did shut down")
+	}
 }
